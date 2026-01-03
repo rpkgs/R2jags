@@ -443,7 +443,7 @@ jags <- function( data, inits,
   if(pD) {
     if (is.null(n.iter.pd)) {n.iter.pd <- 1000}
     pDstuff <- rjags::dic.samples(
-      model=m, n.iter=n.iter.pd, progress.bar="none", quiet=TRUE
+      model=m, n.iter=n.iter.pd, progress.bar=progress.bar, quiet=TRUE
     )
    pD <- sum(pDstuff$penalty)
    DIC2 <- sum(pDstuff$deviance) + pD

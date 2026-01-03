@@ -3,16 +3,20 @@
 
 jags.parallel <- function (data, inits, parameters.to.save, model.file = "model.bug",
     n.chains = 2, n.iter = 2000, n.burnin = floor(n.iter/2),
-    n.thin = max(1, floor((n.iter - n.burnin)/1000)), n.cluster = n.chains,
-    DIC = TRUE, working.directory = NULL, jags.seed = 123, digits = 5,
-    RNGname = c("Wichmann-Hill", "Marsaglia-Multicarry", "Super-Duper",
-        "Mersenne-Twister"), jags.module = c("glm", "dic"),  export_obj_names=NULL, envir = .GlobalEnv)
+    n.thin = max(1, floor((n.iter - n.burnin)/1000)), 
+    n.cluster = n.chains,
+    DIC = TRUE, 
+    working.directory = NULL, 
+    jags.seed = 123, 
+    digits = 5,
+    RNGname = c("Wichmann-Hill", "Marsaglia-Multicarry", "Super-Duper", "Mersenne-Twister"), 
+    progress.bar = "text",
+    jags.module = c("glm", "dic"),  export_obj_names=NULL, envir = .GlobalEnv)
 {
     jags.params <- parameters.to.save
     jags.inits <- if (missing(inits)) {
         NULL
-    }
-    else {
+    } else {
         inits
     }
     jags.model <- model.file
@@ -47,31 +51,42 @@ jags.parallel <- function (data, inits, parameters.to.save, model.file = "model.
 
    list2env(data, envir=envir )
 
-
-
    .runjags <- function(seed) {
         requireNamespace("coda")
         set.seed(seed)
         jagsfit <- jags(data = eval(expression(data)), inits = jags.inits,
             parameters.to.save = eval(expression(jags.params)),
-            model.file = eval(expression(jags.model)), n.chains = 1,
-            n.iter = eval(expression(n.iter)), n.burnin = eval(expression(n.burnin)),
-            n.thin = eval(expression(n.thin)), DIC = eval(expression(DIC)),
+            model.file = eval(expression(jags.model)), 
+            n.chains = 1,
+            n.iter = eval(expression(n.iter)), 
+            n.burnin = eval(expression(n.burnin)),
+            n.thin = eval(expression(n.thin)), 
+            DIC = eval(expression(DIC)),
             working.directory = eval(expression(working.directory)),
-            jags.seed = eval(expression(jags.seed)), progress.bar = "none",
-            digits = eval(expression(digits)), RNGname = eval(expression(RNGname)),
+            jags.seed = eval(expression(jags.seed)), 
+            progress.bar = eval(expression(progress.bar)),
+            digits = eval(expression(digits)), 
+            RNGname = eval(expression(RNGname)),
             jags.module = eval(expression(jags.module)) )
         return(jagsfit)
     }
-    cl <- makeCluster(n.cluster, methods = FALSE)
+    cl = getOption("cl")
+    if (is.null(cl)) {
+        cl <- makeCluster(n.cluster, methods = FALSE, outfile = "log.txt")
+        on.exit(stopCluster(cl)) # clean up the cluster on exit
+    }
+    
     clusterExport(cl, c(names(data), export_obj_names ), envir = envir)
+    clusterExport(cl, c("jags.inits", "jags.params", "jags.model", "n.iter", 
+                        "n.burnin", "n.thin", "DIC", "working.directory", 
+                        "jags.seed", "progress.bar", "digits", "RNGname", 
+                        "jags.module"), envir = environment())
     seeds <- jags.seed + seq_len(n.chains)
-    tryCatch(res <- parLapply(cl = cl, X = seeds, fun = .runjags), finally = stopCluster(cl))
+    tryCatch(res <- parLapply(cl = cl, X = seeds, fun = .runjags))
     result <- NULL
     model <- NULL
     for (ch in 1:n.chains) {
-        result <- abind(result, res[[ch]]$BUGSoutput$sims.array,
-            along = 2)
+        result <- abind(result, res[[ch]]$BUGSoutput$sims.array, along = 2)
         model[[ch]] <- res[[ch]]$model
     }
     if (is.function(model.file)) {
